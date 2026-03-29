@@ -36,11 +36,12 @@ const W = 800, H = 520;
 const LW = 2900; // level width
 
 // ── State ──────────────────────────────────────────────────────────────────
-let state = 'menu';       // 'menu' | 'playing' | 'rescued'
+let state = 'menu';       // 'menu' | 'playing' | 'rescued' | 'collection'
 let currentLevelIdx = 0;
 const rescued = new Set();
 let camera = { x: 0 };
 let hoveredCard = -1;
+let hoveredCollBtn = false;
 let rescueAnim = 0;
 
 // ── Input ──────────────────────────────────────────────────────────────────
@@ -54,6 +55,7 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
   }
   if (state === 'rescued') { state = 'menu'; return; }
+  if (state === 'collection') { state = 'menu'; return; }
   if (state === 'playing' && e.code === 'Escape') { state = 'menu'; return; }
 });
 document.addEventListener('keyup', e => { delete keys[e.code]; });
@@ -64,18 +66,23 @@ canvas.addEventListener('click', e => {
   const my = (e.clientY - r.top)  * (H / r.height);
   if (state === 'menu') {
     const idx = cardAt(mx, my);
-    if (idx >= 0) startLevel(idx);
+    if (idx >= 0) { startLevel(idx); return; }
+    if (isCollectionBtn(mx, my)) { state = 'collection'; return; }
   } else if (state === 'rescued') {
+    state = 'menu';
+  } else if (state === 'collection') {
     state = 'menu';
   }
 });
 
 canvas.addEventListener('mousemove', e => {
-  if (state !== 'menu') return;
   const r = canvas.getBoundingClientRect();
   const mx = (e.clientX - r.left) * (W / r.width);
   const my = (e.clientY - r.top)  * (H / r.height);
-  hoveredCard = cardAt(mx, my);
+  if (state === 'menu') {
+    hoveredCard = cardAt(mx, my);
+    hoveredCollBtn = isCollectionBtn(mx, my);
+  }
 });
 
 // ── Cat definitions ────────────────────────────────────────────────────────
@@ -782,6 +789,18 @@ function drawMenu() {
     ctx.font = 'bold 11px "Courier New"';
     ctx.fillText('\u25BA PLAY', cx + CARD_W / 2, btnY + 15);
   }
+  // Collection button
+  const cb = COLL_BTN;
+  ctx.fillStyle = hoveredCollBtn ? '#9C27B0' : 'rgba(100,30,120,0.75)';
+  ctx.strokeStyle = rescued.size > 0 ? '#FFD700' : 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = rescued.size > 0 ? 2 : 1;
+  ctx.beginPath(); ctx.roundRect(cb.x, cb.y, cb.w, cb.h, 8); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 13px "Courier New"';
+  ctx.textAlign = 'center';
+  const collLabel = rescued.size > 0 ? `\u2665 My Cats (${rescued.size}/${CATS.length})` : '\u2665 My Cats';
+  ctx.fillText(collLabel, W / 2, cb.y + 20);
+
   ctx.textAlign = 'left';
 }
 
@@ -889,6 +908,121 @@ function drawGame() {
   ctx.textAlign = 'left';
 }
 
+// ── Collection button helpers ─────────────────────────────────────────────
+const COLL_BTN = { x: W / 2 - 90, y: H - 52, w: 180, h: 30 };
+function isCollectionBtn(mx, my) {
+  return mx >= COLL_BTN.x && mx <= COLL_BTN.x + COLL_BTN.w &&
+         my >= COLL_BTN.y && my <= COLL_BTN.y + COLL_BTN.h;
+}
+
+// ── Collection screen ─────────────────────────────────────────────────────
+function drawCollection() {
+  const t = Date.now() / 1000;
+
+  // BG
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#1a1a3e'); bg.addColorStop(1, '#0d0d1e');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  // Stars
+  for (let i = 0; i < 90; i++) {
+    const sx = (i * 97 + 3) % W;
+    const sy = (i * 71 + 5) % (H * 0.52);
+    const a = 0.2 + 0.6 * Math.sin(Date.now() / 500 + i * 0.7);
+    ctx.fillStyle = `rgba(255,255,210,${a})`;
+    ctx.fillRect(sx, sy, i % 5 === 0 ? 2.5 : 1.5, i % 5 === 0 ? 2.5 : 1.5);
+  }
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 36px "Courier New"';
+  ctx.shadowColor = '#FF8C00'; ctx.shadowBlur = 15;
+  ctx.fillText('\u2665 Cat Collection \u2665', W / 2, 52);
+  ctx.shadowBlur = 0;
+
+  const count = rescued.size;
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.font = '13px "Courier New"';
+  ctx.fillText(`${count} of ${CATS.length} cats rescued`, W / 2, 76);
+
+  // Cat slots — one row of 4
+  const slotW = 160, slotH = 300;
+  const totalW = slotW * 4 + 20 * 3;
+  const startX = (W - totalW) / 2;
+  const startY = 95;
+
+  for (let i = 0; i < CATS.length; i++) {
+    const cat  = CATS[i];
+    const lvl  = LEVELS[i];
+    const done = rescued.has(i);
+    const sx   = startX + i * (slotW + 20);
+    const sy   = startY;
+
+    // Slot BG
+    ctx.fillStyle = done ? 'rgba(255,215,0,0.10)' : 'rgba(255,255,255,0.04)';
+    ctx.strokeStyle = done ? '#FFD700' : 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = done ? 2 : 1;
+    ctx.beginPath(); ctx.roundRect(sx, sy, slotW, slotH, 12); ctx.fill(); ctx.stroke();
+
+    if (done) {
+      // Full colour cat with bob
+      const bobY = sy + 195 + Math.sin(t * 1.8 + i) * 5;
+      drawCat(sx + slotW / 2, bobY, 1.1, cat);
+
+      // Name
+      ctx.fillStyle = '#FFD700';
+      ctx.font = 'bold 14px "Courier New"';
+      ctx.textAlign = 'center';
+      ctx.fillText(cat.name, sx + slotW / 2, sy + 242);
+
+      // Level
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.font = '10px "Courier New"';
+      ctx.fillText(lvl.name, sx + slotW / 2, sy + 258);
+
+      // Rescued badge
+      ctx.fillStyle = 'rgba(255,215,0,0.18)';
+      ctx.beginPath(); ctx.roundRect(sx + 20, sy + 268, slotW - 40, 20, 5); ctx.fill();
+      ctx.fillStyle = '#FFD700';
+      ctx.font = 'bold 10px "Courier New"';
+      ctx.fillText('\u2713 RESCUED', sx + slotW / 2, sy + 282);
+
+    } else {
+      // Silhouette — draw cat in dark grey
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      drawCat(sx + slotW / 2, sy + 195, 1.1, { body: '#888', mark: '#666', eye: '#888', pattern: 'plain' });
+      ctx.restore();
+
+      // Question mark
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.font = 'bold 52px "Courier New"';
+      ctx.textAlign = 'center';
+      ctx.fillText('?', sx + slotW / 2, sy + 175);
+
+      // "Not yet found"
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.font = '11px "Courier New"';
+      ctx.fillText('not rescued yet', sx + slotW / 2, sy + 258);
+
+      // Level hint
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.font = '10px "Courier New"';
+      ctx.fillText(`try: ${lvl.name}`, sx + slotW / 2, sy + 273);
+    }
+  }
+
+  // Back button
+  const flashA = 0.45 + 0.45 * Math.sin(t * 2.2);
+  ctx.fillStyle = `rgba(255,255,255,${flashA})`;
+  ctx.font = '14px "Courier New"';
+  ctx.textAlign = 'center';
+  ctx.fillText('\u2190 Press any key or click to go back', W / 2, H - 20);
+
+  ctx.textAlign = 'left';
+}
+
 // ── Level start ───────────────────────────────────────────────────────────
 function startLevel(idx) {
   currentLevelIdx = idx;
@@ -905,6 +1039,8 @@ function loop() {
     drawMenu();
   } else if (state === 'rescued') {
     drawRescued();
+  } else if (state === 'collection') {
+    drawCollection();
   }
   // Clear just-pressed after use each frame
   for (const k in justPressed) delete justPressed[k];
