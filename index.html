@@ -105,6 +105,13 @@ const LEVELS = [
     slippery: false,
     start: { x: 60, y: 370 },
     catPos: { x: 2700, y: 185 },
+    spikeCol: '#778899',
+    spikes: [
+      { x: 260,  y: 434, count: 3 },
+      { x: 900,  y: 269, count: 2 },
+      { x: 1700, y: 434, count: 3 },
+      { x: 2090, y: 249, count: 2 },
+    ],
     platforms: [
       // ground chunks
       { x: 0,    y: 450, w: 420,  h: 70 },
@@ -141,6 +148,13 @@ const LEVELS = [
     slippery: false,
     start: { x: 60, y: 370 },
     catPos: { x: 2700, y: 155 },
+    spikeCol: '#9B59B6',
+    spikes: [
+      { x: 520,  y: 434, count: 3 },
+      { x: 1000, y: 249, count: 2 },
+      { x: 1920, y: 434, count: 3 },
+      { x: 2220, y: 199, count: 2 },
+    ],
     platforms: [
       { x: 0,    y: 450, w: 350,  h: 70 },
       { x: 480,  y: 450, w: 280,  h: 70 },
@@ -175,6 +189,13 @@ const LEVELS = [
     slippery: false,
     start: { x: 60, y: 370 },
     catPos: { x: 2700, y: 175 },
+    spikeCol: '#C0392B',
+    spikes: [
+      { x: 230,  y: 364, count: 2 },
+      { x: 740,  y: 299, count: 2 },
+      { x: 1940, y: 434, count: 3 },
+      { x: 2190, y: 214, count: 2 },
+    ],
     platforms: [
       { x: 0,    y: 450, w: 320,  h: 70 },
       { x: 640,  y: 450, w: 220,  h: 70 },
@@ -212,6 +233,13 @@ const LEVELS = [
     slippery: true,
     start: { x: 60, y: 370 },
     catPos: { x: 2700, y: 135 },
+    spikeCol: '#4488CC',
+    spikes: [
+      { x: 240,  y: 359, count: 2 },
+      { x: 1150, y: 199, count: 2 },
+      { x: 2220, y: 434, count: 3 },
+      { x: 2400, y: 189, count: 2 },
+    ],
     platforms: [
       { x: 0,    y: 450, w: 400,  h: 70 },
       { x: 500,  y: 450, w: 280,  h: 70 },
@@ -326,8 +354,16 @@ function updateGame() {
   if (wasOnGround && !player.onGround) player.coyoteTime = 8;
   if (player.coyoteTime > 0) player.coyoteTime--;
 
-  // Death / respawn
-  if (player.y > H + 120) initPlayer(currentLevelIdx);
+  // Death / respawn (fall or spikes)
+  if (player.y > H + 120) { initPlayer(currentLevelIdx); return; }
+  const SW = 16, SH = 16;
+  for (const s of lvl.spikes) {
+    const sx = s.x, sy = s.y, sw = s.count * SW;
+    // Use top half of spike as hitbox
+    if (overlap(player.x + 2, player.y + 8, player.w - 4, player.h - 8, sx, sy + 6, sw, SH - 6)) {
+      initPlayer(currentLevelIdx); return;
+    }
+  }
 
   // Camera
   camera.x = Math.max(0, Math.min(player.x + player.w / 2 - W / 2, LW - W));
@@ -694,6 +730,36 @@ function drawPlatforms(lvl) {
   }
 }
 
+// ── Spikes ────────────────────────────────────────────────────────────────
+function drawSpikes(lvl) {
+  const SW = 16, SH = 16;
+  ctx.fillStyle = lvl.spikeCol;
+  for (const s of lvl.spikes) {
+    const sx = s.x - camera.x;
+    if (sx + s.count * SW < 0 || sx > W) continue;
+    for (let i = 0; i < s.count; i++) {
+      const tx = sx + i * SW;
+      ctx.beginPath();
+      ctx.moveTo(tx,        s.y + SH); // bottom-left
+      ctx.lineTo(tx + SW/2, s.y);      // tip
+      ctx.lineTo(tx + SW,   s.y + SH); // bottom-right
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Sheen highlight on each tip
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < s.count; i++) {
+      const tx = sx + i * SW;
+      ctx.beginPath();
+      ctx.moveTo(tx + SW/2 - 3, s.y + 6);
+      ctx.lineTo(tx + SW/2,     s.y + 1);
+      ctx.lineTo(tx + SW/2 + 3, s.y + 6);
+      ctx.stroke();
+    }
+  }
+}
+
 // ── Menu ─────────────────────────────────────────────────────────────────
 const CARD_W = 168, CARD_H = 170;
 const GRID_X = W / 2 - CARD_W - 14;
@@ -870,6 +936,7 @@ function drawGame() {
 
   drawBackground(lvl);
   drawPlatforms(lvl);
+  drawSpikes(lvl);
 
   // Cat in level (with glow + bob)
   const csx = lvl.catPos.x - camera.x;
